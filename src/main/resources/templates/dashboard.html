@@ -1,10 +1,209 @@
 <!DOCTYPE html>
-<html lang="en">
+<html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <title>Title</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Application Monitoring Dashboard</title>
+    <link rel="stylesheet" th:href="@{/css/dashboard.css}">
 </head>
 <body>
+
+<!-- Dashboard Header -->
+<div class="dashboard-header">
+    <div>
+        <h1>Application Monitoring Dashboard</h1>
+        <div class="subtitle">Real-time metrics from database-driven monitoring</div>
+    </div>
+    <div class="header-controls">
+        <!-- Team Filter Dropdown -->
+        <div class="team-filter">
+            <select id="teamFilter" onchange="filterByTeam()">
+                <option value="">All Teams</option>
+                <option th:each="team : ${dashboardData.teams}"
+                        th:value="${team.teamId}"
+                        th:text="${team.teamName}"
+                        th:selected="${selectedTeamId != null && selectedTeamId == team.teamId}">
+                </option>
+            </select>
+        </div>
+
+        <!-- Refresh Button -->
+        <button class="refresh-btn" onclick="refreshDashboard()">
+            <span>&#x21bb;</span> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Team Sections -->
+<div th:if="${!dashboardData.teams.isEmpty()}">
+    <div th:each="team : ${dashboardData.teams}" class="team-section">
+
+        <!-- Only show team if it has applications or if no filter is applied -->
+        <div th:if="${!dashboardData.getApplicationsForTeam(team.teamId).isEmpty()}">
+
+            <!-- Team Header -->
+            <div class="team-header">
+                <h2 th:text="${team.teamName}">Team Name</h2>
+                <div class="team-description"
+                     th:if="${team.teamDescription != null && !team.teamDescription.isEmpty()}"
+                     th:text="${team.teamDescription}">
+                    Team Description
+                </div>
+            </div>
+
+            <!-- Application Grid -->
+            <div class="app-grid">
+                <!-- Application Card -->
+                <div th:each="app : ${dashboardData.getApplicationsForTeam(team.teamId)}"
+                     class="app-card"
+                     th:text="${@metricService.calculateScore(dashboardData.getMetricsForApp(app.appCode))}">
+
+                    <!-- Application Name -->
+                    <div class="app-name" th:text="${app.appName}">Application Name</div>
+                    <div class="app-code" th:text="${app.appCode}">app-code</div>
+
+                    <!-- Metrics -->
+                    <div class="metrics">
+                        <!-- Last Hour Count -->
+                        <div class="metric-row"
+                             th:if="${dashboardData.getMetricsForApp(app.appCode).containsKey('last_hr_count')}">
+                            <span class="metric-label">Last Hour Events:</span>
+                            <span class="metric-value"
+                                  th:text="${#numbers.formatDecimal(dashboardData.getMetricsForApp(app.appCode).get('last_hr_count'), 0, 0)}">
+                                    0
+                                </span>
+                        </div>
+
+                        <!-- 15-Day Average -->
+                        <div class="metric-row"
+                             th:if="${dashboardData.getMetricsForApp(app.appCode).containsKey('avg_1hr_15wd')}">
+                            <span class="metric-label">15-Day Avg (1hr):</span>
+                            <span class="metric-value"
+                                  th:text="${#numbers.formatDecimal(dashboardData.getMetricsForApp(app.appCode).get('avg_1hr_15wd'), 0, 0)}">
+                                    0
+                                </span>
+                        </div>
+
+                        <!-- Score Display -->
+                        <div class="score-display"
+                             th:if="${dashboardData.getMetricsForApp(app.appCode).containsKey('last_hr_count') &&
+                                          dashboardData.getMetricsForApp(app.appCode).containsKey('avg_1hr_15wd')}">
+                            <div class="score-label">Health Score</div>
+                            <div class="score-value"
+                                 th:text="${@metricService.calculateScore(dashboardData.getMetricsForApp(app.appCode))}">
+                                0.0
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Empty State -->
+<div th:if="${dashboardData.teams.isEmpty()}" class="empty-state">
+    <h3>No Teams Configured</h3>
+    <p>Please configure teams and applications in the database to start monitoring.</p>
+</div>
+
+<!-- Footer -->
+<div class="dashboard-footer">
+    <p>Database-Driven Monitoring System | Powered by Spring Boot & Oracle</p>
+    <p>Last Updated: <span th:text="${#temporals.format(#temporals.createNow(), 'yyyy-MM-dd HH:mm:ss')}"></span></p>
+</div>
+
+<!-- JavaScript -->
+<script th:inline="javascript">
+    /*<![CDATA[*/
+
+    // Auto-refresh every 60 seconds (configurable)
+    const REFRESH_INTERVAL = 60000; // 60 seconds
+
+    setInterval(() => {
+        refreshDashboard();
+    }, REFRESH_INTERVAL);
+
+    // Refresh dashboard
+    function refreshDashboard() {
+        window.location.reload();
+    }
+
+    // Filter by team
+    function filterByTeam() {
+        const teamSelect = document.getElementById('teamFilter');
+        const teamId = teamSelect.value;
+
+        if (teamId) {
+            window.location.href = `/?teamId=${teamId}`;
+        } else {
+            window.location.href = '/';
+        }
+    }
+
+    // Calculate status class based on metrics
+    function getStatusClass(metrics) {
+        if (!metrics || !metrics.last_hr_count || !metrics.avg_1hr_15wd) {
+            return 'status-unknown';
+        }
+
+        const score = (metrics.last_hr_count / metrics.avg_1hr_15wd) * 10;
+
+        if (score >= 8.0) return 'status-green';
+        if (score >= 6.0) return 'status-amber';
+        return 'status-red';
+    }
+
+    // Calculate score display value
+    function calculateScore(metrics) {
+        if (!metrics || !metrics.last_hr_count || !metrics.avg_1hr_15wd) {
+            return 'N/A';
+        }
+
+        const score = (metrics.last_hr_count / metrics.avg_1hr_15wd) * 10;
+        return score.toFixed(1);
+    }
+
+    /*]]>*/
+</script>
+
+<!-- Thymeleaf helper functions (server-side) -->
+<th:block th:fragment="helpers">
+    <script th:inline="javascript">
+        /*<![CDATA[*/
+        function /*[[${getStatusClass}]]*/ getStatusClass(metrics) {
+            if (!metrics || !metrics['last_hr_count'] || !metrics['avg_1hr_15wd']) {
+                return 'status-unknown';
+            }
+
+            const lastHour = metrics['last_hr_count'];
+            const avg15Days = metrics['avg_1hr_15wd'];
+
+            if (avg15Days === 0) return 'status-unknown';
+
+            const score = (lastHour / avg15Days) * 10;
+
+            if (score >= 8.0) return 'status-green';
+            if (score >= 6.0) return 'status-amber';
+            return 'status-red';
+        }
+
+        function /*[[${calculateScore}]]*/ calculateScore(metrics) {
+            if (!metrics || !metrics['last_hr_count'] || !metrics['avg_1hr_15wd']) {
+                return 'N/A';
+            }
+
+            const lastHour = metrics['last_hr_count'];
+            const avg15Days = metrics['avg_1hr_15wd'];
+
+            if (avg15Days === 0) return 'N/A';
+
+            const score = (lastHour / avg15Days) * 10;
+            return score.toFixed(1);
+        }
+        /*]]>*/
+    </script>
+</th:block>
 
 </body>
 </html>
