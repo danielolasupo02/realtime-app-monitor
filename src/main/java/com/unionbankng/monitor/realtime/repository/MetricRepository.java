@@ -1,12 +1,16 @@
 package com.unionbankng.monitor.realtime.repository;
 
 import com.unionbankng.monitor.realtime.model.Metric;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -25,6 +29,7 @@ import java.util.List;
 public class MetricRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private static final Logger log = LoggerFactory.getLogger(MetricRepository.class);
 
     public MetricRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
@@ -46,12 +51,20 @@ public class MetricRepository {
      * @return List of all current metrics
      */
     public List<Metric> findAllCurrentMetrics() {
-        // Single unified query - works for ALL applications
-        String sql = "SELECT app_code, metric_code, metric_value " +
-                "FROM TABLE(metric_api.get_current_metrics()) " +
-                "ORDER BY app_code, metric_code";
+        try {
+            String sql = "SELECT app_code, metric_code, metric_value " +
+                    "FROM TABLE(metric_api.get_current_metrics()) " +
+                    "ORDER BY app_code, metric_code";
 
-        return jdbcTemplate.query(sql, new MetricRowMapper());
+            return jdbcTemplate.query(sql, new MetricRowMapper());
+
+        } catch (DataAccessException e) {
+            // Log the error
+            log.error("Error fetching metrics from database: {}", e.getMessage());
+
+            // Return empty list instead of throwing exception
+            return Collections.emptyList();
+        }
     }
 
     /**
